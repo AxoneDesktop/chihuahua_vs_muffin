@@ -1,0 +1,8 @@
+tensorflow
+tensorboard
+setuptools<81
+numpy
+matplotlib
+scikit-learn
+seaborn
+ipykernel
