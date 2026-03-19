@@ -4,7 +4,6 @@ Preparado para Hugging Face Spaces
 """
 
 import gradio as gr
-import tensorflow as tf
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -14,19 +13,26 @@ from pathlib import Path
 from PIL import Image
 
 # ============================================================================
-# 1. CARGAR MODELO
+# 1. CARGAR MODELO (lazy para evitar conflicto con spaces/codefind)
 # ============================================================================
 
 MODEL_PATH = Path(__file__).parent / "modelo_chihuahua_vs_muffin.keras"
-
-print(f"Cargando modelo desde: {MODEL_PATH}")
-model = tf.keras.models.load_model(MODEL_PATH)
-
 IMG_SIZE = (128, 128)
 CLASS_NAMES = ["Chihuahua", "Muffin"]
 THRESHOLD = 0.5
 
-print("Modelo cargado correctamente")
+tf = None
+model = None
+
+def _load_model():
+    global tf, model
+    if model is None:
+        import tensorflow as _tf
+        tf = _tf
+        print(f"Cargando modelo desde: {MODEL_PATH}")
+        model = tf.keras.models.load_model(MODEL_PATH)
+        print("Modelo cargado correctamente")
+    return tf, model
 
 # ============================================================================
 # 2. FUNCIONES DE PREDICCIÓN
@@ -50,6 +56,7 @@ def preprocess_input_image(image):
 
 def predict_image(image):
     """Predice si la imagen es chihuahua o muffin."""
+    tf, model = _load_model()
     img_array = preprocess_input_image(image)
     input_array = np.expand_dims(img_array, axis=0)
     prediction = model.predict(input_array, verbose=0)[0][0]
@@ -93,6 +100,7 @@ def predict_with_output(image):
 
 def get_last_conv_layer_name(mdl):
     """Obtiene nombre de la última capa convolucional."""
+    tf, _ = _load_model()
     for layer in reversed(mdl.layers):
         if isinstance(layer, tf.keras.layers.Conv2D):
             return layer.name
@@ -120,6 +128,7 @@ def forward_with_intermediate(mdl, inputs, target_layer_name, training=False):
 
 def make_gradcam_heatmap(img_array, mdl, last_conv_layer_name, pred_index=0):
     """Genera mapa de activación Grad-CAM."""
+    tf, _ = _load_model()
     img_tensor = tf.cast(img_array, tf.float32)
 
     with tf.GradientTape() as tape:
@@ -164,11 +173,11 @@ def predict_with_gradcam(image):
     img_array = preprocess_input_image(image)
 
     try:
+        tf, model = _load_model()
         input_array = np.expand_dims(img_array, axis=0)
         last_conv = get_last_conv_layer_name(model)
-        pred_index = 1 if label == "Muffin" else 0
 
-        heatmap = make_gradcam_heatmap(input_array, model, last_conv, pred_index=pred_index)
+        heatmap = make_gradcam_heatmap(input_array, model, last_conv, pred_index=0)
         overlay = overlay_heatmap(img_array.astype("uint8"), heatmap, alpha=0.4)
 
         fig, axes = plt.subplots(1, 2, figsize=(10, 5))
@@ -274,4 +283,4 @@ with gr.Blocks(title="Chihuahua vs Muffin") as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(ssr_mode=False)
